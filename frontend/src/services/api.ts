@@ -1,7 +1,16 @@
 import axios from 'axios';
 
+let defaultBaseURL = 'http://localhost:5000/api/v1';
+
+if (typeof window !== 'undefined') {
+  const hostname = window.location.hostname;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    defaultBaseURL = '/_/backend/api/v1';
+  }
+}
+
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || defaultBaseURL,
   headers: {
     'Content-Type': 'application/json',
   },

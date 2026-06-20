@@ -1,10 +1,90 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
-import { Send, Loader2, MessageSquare, Compass, ShieldCheck } from 'lucide-react';
+import { Send, MessageSquare, Compass, ShieldCheck } from 'lucide-react';
+
+function TypingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex justify-start">
+      <div className="flex items-center space-x-2.5 max-w-[85%]">
+        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 border mt-0.5">
+          <Compass className="w-4 h-4" />
+        </div>
+        <div className="p-3.5 rounded-2xl rounded-tl-none bg-gray-50 border border-gray-200/60 flex items-center space-x-3">
+          <div className="flex space-x-1">
+            <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          </div>
+          <span className="text-xs text-gray-400 font-medium">
+            {elapsed < 3
+              ? 'Thinking...'
+              : elapsed < 10
+              ? `Analyzing context... (${elapsed}s)`
+              : `Processing with AI... (${elapsed}s)`}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MessageBubble({ text, role }: { text: string; role: 'user' | 'ai' }) {
+  // Simple markdown-like rendering for bold, bullet lists
+  const renderText = (raw: string) => {
+    const lines = raw.split('\n');
+    return lines.map((line, i) => {
+      // Bold: **text**
+      const boldified = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      // Bullet point
+      if (line.startsWith('- ') || line.startsWith('* ')) {
+        return (
+          <li key={i} className="ml-4 list-disc" dangerouslySetInnerHTML={{ __html: boldified.slice(2) }} />
+        );
+      }
+      // Heading ###
+      if (line.startsWith('### ')) {
+        return <p key={i} className="font-bold text-sm mt-2" dangerouslySetInnerHTML={{ __html: boldified.slice(4) }} />;
+      }
+      if (line.startsWith('## ')) {
+        return <p key={i} className="font-bold mt-2" dangerouslySetInnerHTML={{ __html: boldified.slice(3) }} />;
+      }
+      if (line === '') return <div key={i} className="h-2" />;
+      return <p key={i} dangerouslySetInnerHTML={{ __html: boldified }} />;
+    });
+  };
+
+  return (
+    <div className={`flex ${role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div className="flex space-x-2.5 max-w-[85%]">
+        {role === 'ai' && (
+          <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 border mt-0.5">
+            <Compass className="w-4 h-4" />
+          </div>
+        )}
+        <div
+          className={`p-3.5 rounded-2xl text-sm leading-relaxed ${
+            role === 'user'
+              ? 'bg-blue-600 text-white font-medium rounded-tr-none'
+              : 'bg-gray-50 text-gray-800 border border-gray-200/60 rounded-tl-none'
+          }`}
+        >
+          {role === 'ai' ? <div className="space-y-0.5">{renderText(text)}</div> : text}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AssistantPage() {
   const router = useRouter();
@@ -13,10 +93,11 @@ export default function AssistantPage() {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([
     {
       role: 'ai',
-      text: 'Hello! I am your Bureaucracy Copilot. I can explain scholarship requirements, checklist documents, and details from our verified catalog. Ask me anything!',
+      text: 'Hello! I am your **Bureaucracy Copilot**. I can explain scholarship requirements, checklist documents, and details from our verified catalog.\n\nAsk me anything! Note: AI responses may take **10–20 seconds** for complex queries.',
     },
   ]);
   const [chatLoading, setChatLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!localStorage.getItem('bc_access_token')) {
@@ -24,23 +105,26 @@ export default function AssistantPage() {
     }
   }, [router]);
 
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, chatLoading]);
+
   const handleSendChat = async (textToSend?: string) => {
     const query = textToSend || chatInput;
-    if (!query.trim()) return;
+    if (!query.trim() || chatLoading) return;
 
     setMessages((prev) => [...prev, { role: 'user', text: query }]);
     setChatInput('');
     setChatLoading(true);
 
     try {
-      const res = await api.post('/ai/chat', {
-        message: query,
-      });
+      const res = await api.post('/ai/chat', { message: query });
       setMessages((prev) => [...prev, { role: 'ai', text: res.data.answer }]);
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: 'ai', text: 'I could not connect to the assistant service. Please check your environment key configurations.' },
+        { role: 'ai', text: 'I could not connect to the assistant service. Please check your network connection or try again in a moment.' },
       ]);
     } finally {
       setChatLoading(false);
@@ -70,39 +154,20 @@ export default function AssistantPage() {
               </span>
             </div>
           </div>
+          {chatLoading && (
+            <span className="text-xs text-blue-500 font-medium animate-pulse bg-blue-50 px-3 py-1 rounded-full">
+              AI is thinking...
+            </span>
+          )}
         </div>
 
         {/* Scroll Box */}
         <div className="flex-grow overflow-y-auto p-6 space-y-4">
           {messages.map((m, idx) => (
-            <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className="flex space-x-2.5 max-w-[85%]">
-                {m.role === 'ai' && (
-                  <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 border mt-0.5">
-                    <Compass className="w-4 h-4" />
-                  </div>
-                )}
-                <div
-                  className={`p-3.5 rounded-2xl leading-relaxed text-sm ${
-                    m.role === 'user'
-                      ? 'bg-blue-600 text-white font-medium rounded-tr-none'
-                      : 'bg-gray-150 text-gray-800 font-light border border-gray-200/60 rounded-tl-none bg-gray-50'
-                  }`}
-                >
-                  {m.text}
-                </div>
-              </div>
-            </div>
+            <MessageBubble key={idx} role={m.role} text={m.text} />
           ))}
-
-          {chatLoading && (
-            <div className="flex justify-start">
-              <div className="flex space-x-2.5 items-center text-sm text-gray-400 pl-11">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Copilot is parsing context details...</span>
-              </div>
-            </div>
-          )}
+          {chatLoading && <TypingIndicator />}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Suggestions Bar */}
@@ -127,13 +192,14 @@ export default function AssistantPage() {
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
-            placeholder="Type your question (e.g. Am I eligible? What are the NSP benefits?)..."
-            className="flex-grow px-4 py-3 border border-gray-200 rounded-xl text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            placeholder="Ask about scholarships, eligibility, documents..."
+            disabled={chatLoading}
+            className="flex-grow px-4 py-3 border border-gray-200 rounded-xl text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-50"
           />
           <button
             onClick={() => handleSendChat()}
-            disabled={chatLoading}
-            className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors flex items-center justify-center disabled:opacity-50"
+            disabled={chatLoading || !chatInput.trim()}
+            className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
           </button>

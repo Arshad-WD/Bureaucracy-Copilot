@@ -88,7 +88,7 @@ ${context || 'No specific scholarship details retrieved.'}
             { text: systemPrompt },
             { text: `Question: ${dto.message}` },
           ]),
-          4000
+          25000
         );
         return { answer: result.response.text() };
       } catch (err: any) {
@@ -98,7 +98,7 @@ ${context || 'No specific scholarship details retrieved.'}
 
     if (nvidiaKey) {
       try {
-        const fetchPromise = fetch(
+        const nvidiaCallPromise = fetch(
           'https://integrate.api.nvidia.com/v1/chat/completions',
           {
             method: 'POST',
@@ -113,16 +113,16 @@ ${context || 'No specific scholarship details retrieved.'}
                 { role: 'user', content: dto.message },
               ],
               temperature: 0.2,
-              max_tokens: 1024,
+              max_tokens: 512,
             }),
           }
-        );
-        const response = await this.withTimeout(fetchPromise, 4000);
-        if (!response.ok) {
-          throw new Error(`HTTP status ${response.status}`);
-        }
-        const data = await response.json();
-        return { answer: data.choices[0].message.content };
+        ).then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+          const data = await res.json();
+          return data.choices[0].message.content as string;
+        });
+        const answer = await this.withTimeout(nvidiaCallPromise, 30000);
+        return { answer };
       } catch (err: any) {
         this.logger.error('NVIDIA NIM API Error, falling back: ' + err.message);
       }
@@ -156,7 +156,7 @@ ${context || 'No specific scholarship details retrieved.'}
           model.generateContent([
             { text: `Summarize the following scholarship:\n${context}` },
           ]),
-          4000
+          25000
         );
         return { summary: result.response.text() };
       } catch { }

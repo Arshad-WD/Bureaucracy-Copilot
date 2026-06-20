@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useScholarshipStore } from '../../../stores/scholarshipStore';
 import { useTrackerStore } from '../../../stores/trackerStore';
@@ -18,10 +18,12 @@ export default function ScholarshipDetailPage({ params }: { params: Promise<{ id
   const [trackerStatus, setTrackerStatus] = useState('INTERESTED');
   const [trackerSuccess, setTrackerSuccess] = useState(false);
 
-  // AI Chat Sidebar State
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatElapsed, setChatElapsed] = useState(0);
+  const chatElapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchDetails(id);
@@ -52,6 +54,8 @@ export default function ScholarshipDetailPage({ params }: { params: Promise<{ id
     setMessages((prev) => [...prev, { role: 'user', text: query }]);
     setChatInput('');
     setChatLoading(true);
+    setChatElapsed(0);
+    chatElapsedRef.current = setInterval(() => setChatElapsed((e) => e + 1), 1000);
 
     try {
       const res = await api.post('/ai/chat', {
@@ -63,10 +67,11 @@ export default function ScholarshipDetailPage({ params }: { params: Promise<{ id
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: 'ai', text: 'Sorry, the AI assistant is currently unavailable. Please try again later.' },
+        { role: 'ai', text: 'I could not connect to the assistant service. Please try again in a moment.' },
       ]);
     } finally {
       setChatLoading(false);
+      if (chatElapsedRef.current) clearInterval(chatElapsedRef.current);
     }
   };
 
@@ -276,11 +281,16 @@ export default function ScholarshipDetailPage({ params }: { params: Promise<{ id
                   {chatLoading && (
                     <div className="flex justify-start">
                       <div className="p-3 bg-gray-50 text-gray-400 rounded-xl rounded-tl-none border flex items-center space-x-2">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Copilot is typing...</span>
+                        <div className="flex space-x-1">
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                        <span>{chatElapsed < 3 ? 'Thinking...' : `Processing... (${chatElapsed}s)`}</span>
                       </div>
                     </div>
                   )}
+                  <div ref={chatEndRef} />
                 </div>
               )}
             </div>

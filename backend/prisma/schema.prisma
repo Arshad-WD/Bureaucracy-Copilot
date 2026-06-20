@@ -1,0 +1,144 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String             @id @default(uuid()) @db.Uuid
+  name         String
+  email        String             @unique
+  passwordHash String
+  role         String             @default("USER") // USER, ADMIN, SUPER_ADMIN
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  profile      UserProfile?
+  saved        SavedScholarship[]
+  applications Application[]
+  notifications Notification[]
+  reminders    Reminder[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @db.Uuid
+  age             Int?
+  gender          String?
+  state           String?
+  educationLevel  String?
+  institutionType String?
+  annualIncome    Float?
+  category        String?
+  disability      Boolean? @default(false)
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Scholarship {
+  id             String                 @id @default(uuid()) @db.Uuid
+  title          String
+  description    String
+  provider       String
+  amount         Float
+  applicationUrl String?
+  deadline       DateTime?
+  status         String                 @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  rules          EligibilityRule[]
+  documents      RequiredDocument[]
+  savedBy        SavedScholarship[]
+  applications   Application[]
+  reminders      Reminder[]
+  embeddings     ScholarshipEmbedding[]
+
+  @@map("scholarships")
+}
+
+model EligibilityRule {
+  id            String      @id @default(uuid()) @db.Uuid
+  scholarshipId String      @db.Uuid
+  ruleJson      Json
+  createdAt     DateTime    @default(now())
+  scholarship   Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+
+  @@map("eligibility_rules")
+}
+
+model RequiredDocument {
+  id            String      @id @default(uuid()) @db.Uuid
+  scholarshipId String      @db.Uuid
+  documentName  String
+  mandatory     Boolean     @default(true)
+  scholarship   Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+
+  @@map("required_documents")
+}
+
+model SavedScholarship {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @db.Uuid
+  scholarshipId String      @db.Uuid
+  savedAt       DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scholarship   Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scholarshipId])
+  @@map("saved_scholarships")
+}
+
+model Application {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @db.Uuid
+  scholarshipId String      @db.Uuid
+  status        String      @default("INTERESTED") // INTERESTED, PREPARING_DOCUMENTS, APPLIED, UNDER_REVIEW, APPROVED, REJECTED
+  notes         String?
+  appliedAt     DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scholarship   Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+
+  @@map("applications")
+}
+
+model Reminder {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @db.Uuid
+  scholarshipId String      @db.Uuid
+  reminderType  String // 30_DAY, 14_DAY, 7_DAY, 1_DAY
+  scheduledAt   DateTime
+  sent          Boolean     @default(false)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scholarship   Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+
+  @@map("reminders")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model ScholarshipEmbedding {
+  id            String      @id @default(uuid()) @db.Uuid
+  scholarshipId String      @db.Uuid
+  chunkText     String
+  embeddingJson String // Stringified float array representing vector to ensure high portability and compatibility
+  createdAt     DateTime    @default(now())
+  scholarship   Scholarship @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+
+  @@map("scholarship_embeddings")
+}
